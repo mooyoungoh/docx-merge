@@ -42,6 +42,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   li button:hover { color:var(--ink); border-color:#c9ced6; }
   li button:disabled { opacity:.35; cursor:default; }
   .row { display:flex; gap:10px; align-items:center; margin-top:8px; }
+  select { padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; background:#fff; }
   input[type=text] { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
   .go { padding:11px 20px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
   .go:disabled { background:#a9b7d9; cursor:default; }
@@ -63,13 +64,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <ul id="list"></ul>
 
   <div class="row">
+    <label for="paper" style="font-size:14px;color:var(--muted)">용지 크기</label>
+    <select id="paper">
+      <option value="letter" selected>Letter (8.5 × 11 in)</option>
+      <option value="legal">Legal (8.5 × 14 in)</option>
+      <option value="a4">A4 (210 × 297 mm)</option>
+      <option value="">원본 그대로</option>
+    </select>
+  </div>
+  <div class="row">
     <input type="text" id="outname" value="merged.docx" aria-label="저장할 파일 이름">
     <button class="go" id="go" disabled>합치기 &amp; 다운로드</button>
   </div>
   <div class="msg" id="msg"></div>
 
   <p class="note">
-    목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다.<br>
+    목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다. 용지 크기를 고르면 모든 페이지가 그 크기로 통일됩니다(가로 페이지는 가로 유지).<br>
     .doc(구버전) 파일은 Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.
   </p>
 </main>
@@ -125,7 +135,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return f ? parse(await f.async('string')) : null;
     }
 
-    async function merge(buffers, outType) {
+    const PAPER = { letter: [12240, 15840, 1], legal: [12240, 20160, 5], a4: [11906, 16838, 9] };
+    // Force every section to one paper size, keeping each section's orientation.
+    async function setPaperSize(out, paper) {
+      const spec = PAPER[paper];
+      if (!spec) return;
+      const main = await mainPart(out);
+      const doc = await readXml(out, main);
+      for (const sp of all(doc, W, 'sectPr')) {
+        if (sp.parentNode.localName === 'sectPrChange') continue;
+        let sz = kids(sp, W, 'pgSz')[0];
+        if (!sz) {
+          sz = doc.createElementNS(W, 'w:pgSz');
+          const before = Array.from(sp.childNodes).find(c => c.nodeType === 1 && !['headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type'].includes(c.localName)) || null;
+          sp.insertBefore(sz, before);
+        }
+        const landscape = sz.getAttributeNS(W, 'orient') === 'landscape' || (+sz.getAttributeNS(W, 'w') > +sz.getAttributeNS(W, 'h'));
+        sz.setAttributeNS(W, 'w:w', String(landscape ? spec[1] : spec[0]));
+        sz.setAttributeNS(W, 'w:h', String(landscape ? spec[0] : spec[1]));
+        sz.setAttributeNS(W, 'w:code', String(spec[2]));
+      }
+      out.file(main, ser(doc));
+    }
+
+    async function merge(buffers, outType, opts) {
+      opts = opts || {};
       if (buffers.length < 2) throw new Error('Need at least 2 files');
       const out = await JSZip.loadAsync(buffers[0]);
       const compats = [await compatInfo(out)];
@@ -135,6 +169,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         await appendDoc(out, src, i);
       }
       await setOldestCompat(out, compats);
+      if (opts.paper) await setPaperSize(out, opts.paper);
       for (const k of Object.keys(out.files)) if (out.files[k].dir) delete out.files[k];
       return out.generateAsync({ type: outType || 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
     }
@@ -724,7 +759,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (typeof JSZip === 'undefined') throw new Error('JSZip을 불러오지 못했습니다');
       merger = merger || makeMerger(JSZip, DOMParser, XMLSerializer);
       const bufs = await Promise.all(files.map(f => f.arrayBuffer()));
-      const blob = await merger.merge(bufs, 'blob');
+      const blob = await merger.merge(bufs, 'blob', { paper: $('paper').value });
       let name = $('outname').value.trim() || 'merged.docx';
       if (!/\.docx$/i.test(name)) name += '.docx';
       const a = document.createElement('a');
