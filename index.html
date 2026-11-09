@@ -31,6 +31,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .drop b { color:var(--accent); }
   ul { list-style:none; padding:0; margin:16px 0; }
   li { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  li { cursor:grab; user-select:none; transition:background .1s; }
+  li.dragging { opacity:.4; }
+  li.before { box-shadow:0 -3px 0 var(--accent); }
+  li.after { box-shadow:0 3px 0 var(--accent); }
+  li .grip { color:#b4bac4; font-size:14px; letter-spacing:-2px; flex:none; }
   li .n { width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; font-size:12px; display:grid; place-items:center; flex:none; }
   li .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
   li button { border:1px solid var(--line); background:#fff; border-radius:6px; width:30px; height:28px; cursor:pointer; color:var(--muted); }
@@ -64,7 +69,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <div class="msg" id="msg"></div>
 
   <p class="note">
-    목록 순서대로 합쳐지고, 각 파일은 새 페이지에서 시작합니다.<br>
+    목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다.<br>
     .doc(구버전) 파일은 Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.
   </p>
 </main>
@@ -484,21 +489,51 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   const $ = id => document.getElementById(id);
   const list = $('list'), go = $('go'), msg = $('msg'), drop = $('drop');
 
+  let dragIdx = null;
+  function clearMarks() { list.querySelectorAll('li').forEach(x => x.classList.remove('before', 'after')); }
   function render() {
     list.innerHTML = '';
     files.forEach((f, i) => {
       const li = document.createElement('li');
-      li.innerHTML = '<span class="n">' + (i + 1) + '</span><span class="name"></span>' +
+      li.draggable = true;
+      li.innerHTML = '<span class="grip">⋮⋮</span><span class="n">' + (i + 1) + '</span><span class="name"></span>' +
         '<button title="위로">&uarr;</button><button title="아래로">&darr;</button><button title="삭제">&times;</button>';
       li.querySelector('.name').textContent = f.name;
       const [up, down, del] = li.querySelectorAll('button');
       up.disabled = i === 0; down.disabled = i === files.length - 1;
-      up.onclick = () => { [files[i - 1], files[i]] = [files[i], files[i - 1]]; render(); };
-      down.onclick = () => { [files[i + 1], files[i]] = [files[i], files[i + 1]]; render(); };
+      up.onclick = () => move(i, i - 1);
+      down.onclick = () => move(i, i + 1);
       del.onclick = () => { files.splice(i, 1); render(); };
+
+      li.addEventListener('dragstart', e => {
+        dragIdx = i; li.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(i));
+      });
+      li.addEventListener('dragend', () => { dragIdx = null; li.classList.remove('dragging'); clearMarks(); });
+      li.addEventListener('dragover', e => {
+        if (dragIdx === null) return;
+        e.preventDefault();
+        const r = li.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+        clearMarks(); li.classList.add(after ? 'after' : 'before');
+      });
+      li.addEventListener('drop', e => {
+        if (dragIdx === null) return;
+        e.preventDefault(); e.stopPropagation();
+        const r = li.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+        let to = i + (after ? 1 : 0);
+        if (dragIdx < to) to--;
+        move(dragIdx, to);
+      });
       list.appendChild(li);
     });
     go.disabled = files.length < 2;
+  }
+  function move(from, to) {
+    if (from === to || to < 0 || to >= files.length) { render(); return; }
+    const [f] = files.splice(from, 1);
+    files.splice(to, 0, f);
+    render();
   }
 
   function add(fl) {
@@ -514,7 +549,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $('pick').onchange = e => { add(e.target.files); e.target.value = ''; };
   ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', e => add(e.dataTransfer.files));
+  drop.addEventListener('drop', e => { e.stopPropagation(); add(e.dataTransfer.files); });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => { e.preventDefault(); if (dragIdx === null && e.dataTransfer.files.length) add(e.dataTransfer.files); });
 
   go.onclick = async () => {
     go.disabled = true; msg.className = 'msg'; msg.textContent = '합치는 중...';
