@@ -48,6 +48,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .go:disabled { background:#a9b7d9; cursor:default; }
   .msg { margin-top:14px; font-size:14px; min-height:20px; }
   .err { color:#b42318; }
+  .dl { margin-top:28px; display:flex; gap:16px; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; font-size:13.5px; line-height:1.6; color:var(--muted); }
+  .dl b { color:var(--ink); }
+  .dlbtn { flex:none; padding:9px 14px; border-radius:8px; border:1px solid var(--accent); color:var(--accent); text-decoration:none; font-weight:600; font-size:14px; }
+  .dlbtn:hover { background:#eef3ff; }
   .note { margin-top:28px; font-size:12.5px; color:var(--muted); line-height:1.6; }
 </style>
 </head>
@@ -73,9 +77,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   </div>
   <div class="msg" id="msg"></div>
 
+  <div class="dl">
+    <div>
+      <b>.doc 파일도 합쳐야 하나요?</b><br>
+      Windows용 프로그램을 받으세요. .doc/.docx 모두 되고, .doc으로 저장도 됩니다. (PC에 Word 필요)
+    </div>
+    <a class="dlbtn" href="word-merge.bat" download>word-merge.bat 다운로드</a>
+  </div>
+
   <p class="note">
     목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다. 용지 크기를 고르거나 기준 파일을 고르면 모든 페이지가 그 크기로 통일됩니다(가로 페이지는 가로 유지, 여백은 그대로).<br>
-    .doc(구버전) 파일은 Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.
+    .doc 파일은 위 Windows 프로그램을 쓰거나, Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.
   </p>
 </main>
 
