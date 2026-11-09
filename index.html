@@ -53,7 +53,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <main>
   <h1>Word 파일 합치기</h1>
-  <p class="sub">각 파일의 여백, 용지 방향, 머리글/바닥글은 그대로 유지됩니다. 파일은 서버로 전송되지 않고 이 브라우저 안에서만 처리됩니다.</p>
+  <p class="sub">각 파일의 여백, 용지 방향, 머리글/바닥글은 그대로 유지됩니다. .doc에서 변환한 파일(호환 모드)이 섞이면 결과도 호환 모드로 저장됩니다. 파일은 서버로 전송되지 않고 이 브라우저 안에서만 처리됩니다.</p>
 
   <label class="drop" id="drop">
     <input type="file" id="pick" accept=".docx" multiple hidden>
@@ -128,12 +128,53 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     async function merge(buffers, outType) {
       if (buffers.length < 2) throw new Error('Need at least 2 files');
       const out = await JSZip.loadAsync(buffers[0]);
+      const compats = [await compatInfo(out)];
       for (let i = 1; i < buffers.length; i++) {
         const src = await JSZip.loadAsync(buffers[i]);
+        compats.push(await compatInfo(src));
         await appendDoc(out, src, i);
       }
+      await setOldestCompat(out, compats);
       for (const k of Object.keys(out.files)) if (out.files[k].dir) delete out.files[k];
       return out.generateAsync({ type: outType || 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+    }
+
+    // Compatibility mode (layout rules) lives in settings.xml <w:compat>.
+    // Files saved from .doc are in mode 11. The merged file uses the OLDEST mode
+    // among the inputs so those pages keep their original layout.
+    async function settingsPart(zip) {
+      const main = await mainPart(zip);
+      const rels = await readXml(zip, relsPathOf(main));
+      const r = Array.from(rels.getElementsByTagNameNS(PR, 'Relationship')).find(x => relType(x.getAttribute('Type')) === 'settings');
+      return r ? resolve(main, r.getAttribute('Target')) : null;
+    }
+    async function compatInfo(zip) {
+      const part = await settingsPart(zip);
+      const sd = part ? await readXml(zip, part) : null;
+      const compat = sd ? kids(sd.documentElement, W, 'compat')[0] : null;
+      let mode = 12;
+      if (compat) for (const cs of kids(compat, W, 'compatSetting')) {
+        if (cs.getAttributeNS(W, 'name') === 'compatibilityMode') mode = parseInt(cs.getAttributeNS(W, 'val'), 10) || 12;
+      }
+      return { mode, compat };
+    }
+    async function setOldestCompat(out, compats) {
+      let oldest = compats[0];
+      for (const c of compats) if (c.mode < oldest.mode) oldest = c;
+      if (oldest === compats[0] || !oldest.compat) return;
+      const part = await settingsPart(out);
+      if (!part) return;
+      const sd = await readXml(out, part);
+      const root = sd.documentElement;
+      const nu = sd.importNode(oldest.compat, true);
+      const cur = kids(root, W, 'compat')[0];
+      if (cur) root.replaceChild(nu, cur);
+      else {
+        const AFTER = ['docVars','rsids','mathPr','attachedSchema','themeFontLang','clrSchemeMapping','doNotIncludeSubdocsInStats','doNotAutoCompressPictures','forceUpgrade','captions','readModeInkLockDown','smartTagType','schemaLibrary','shapeDefaults','doNotEmbedSmartTags','decimalSymbol','listSeparator'];
+        const before = Array.from(root.childNodes).find(c => c.nodeType === 1 && AFTER.includes(c.localName)) || null;
+        root.insertBefore(nu, before);
+      }
+      out.file(part, ser(sd));
     }
 
     async function mainPart(zip) {
