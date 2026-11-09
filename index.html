@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -52,43 +52,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .dl b { color:var(--ink); }
   .dlbtn { flex:none; padding:9px 14px; border-radius:8px; border:1px solid var(--accent); color:var(--accent); text-decoration:none; font-weight:600; font-size:14px; }
   .dlbtn:hover { background:#eef3ff; }
+  .lang { display:flex; justify-content:flex-end; gap:4px; margin-bottom:8px; }
+  .lang button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12.5px; cursor:pointer; }
+  .lang button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
   .note { margin-top:28px; font-size:12.5px; color:var(--muted); line-height:1.6; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Word 파일 합치기</h1>
-  <p class="sub">각 파일의 여백, 용지 방향, 머리글/바닥글은 그대로 유지됩니다. .doc에서 변환한 파일(호환 모드)이 섞이면 결과도 호환 모드로 저장됩니다. 파일은 서버로 전송되지 않고 이 브라우저 안에서만 처리됩니다.</p>
+  <div class="lang" role="group" aria-label="Language">
+    <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+  </div>
+  <h1 data-i18n="title"></h1>
+  <p class="sub" data-i18n="sub"></p>
 
   <label class="drop" id="drop">
     <input type="file" id="pick" accept=".docx" multiple hidden>
-    .docx 파일을 여기에 끌어다 놓거나 <b>클릭해서 선택</b>하세요 (2개 이상)
+    <span data-i18n="drop"></span>
   </label>
 
   <ul id="list"></ul>
 
   <div class="row">
-    <label for="paper" style="font-size:14px;color:var(--muted)">용지 크기</label>
+    <label for="paper" style="font-size:14px;color:var(--muted)" data-i18n="paper"></label>
     <select id="paper"></select>
   </div>
   <div class="row">
-    <input type="text" id="outname" value="merged.docx" aria-label="저장할 파일 이름">
-    <button class="go" id="go" disabled>합치기 &amp; 다운로드</button>
+    <input type="text" id="outname" value="merged.docx" data-i18n-aria="outname">
+    <button class="go" id="go" disabled data-i18n="go"></button>
   </div>
   <div class="msg" id="msg"></div>
 
   <div class="dl">
-    <div>
-      <b>.doc 파일도 합쳐야 하나요?</b><br>
-      Windows용 프로그램을 받으세요. .doc/.docx 모두 되고, .doc으로 저장도 됩니다. (PC에 Word 필요)
-    </div>
-    <a class="dlbtn" href="word-merge.bat" download>word-merge.bat 다운로드</a>
+    <div data-i18n="dlText"></div>
+    <a class="dlbtn" href="word-merge.bat" download data-i18n="dlBtn"></a>
   </div>
 
-  <p class="note">
-    목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다. 용지 크기를 고르거나 기준 파일을 고르면 모든 페이지가 그 크기로 통일됩니다(가로 페이지는 가로 유지, 여백은 그대로).<br>
-    .doc 파일은 위 Windows 프로그램을 쓰거나, Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.
-  </p>
+  <p class="note" data-i18n="note"></p>
 </main>
 
 <script>
@@ -709,6 +709,70 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 <script>
 (() => {
+  const T = {
+    en: {
+      title: 'Merge Word Files',
+      sub: 'Each file keeps its own margins, orientation, and headers/footers. If a file saved from .doc (compatibility mode) is included, the result is saved in compatibility mode too. Files never leave your browser; nothing is uploaded.',
+      drop: 'Drop .docx files here or <b>click to choose</b> (2 or more)',
+      paper: 'Paper size',
+      outname: 'File name to save',
+      go: 'Merge &amp; Download',
+      dlText: '<b>Need to merge .doc files too?</b><br>Get the Windows tool. It handles .doc and .docx and can save as .doc. (Word required on the PC)',
+      dlBtn: 'Download word-merge.bat',
+      note: 'Drag the list or use the ↑↓ buttons to change the order. The top file becomes the first page, and each file starts on a new page. Choosing a paper size or a reference file makes every page that size (landscape pages stay landscape, margins stay the same).<br>For .doc files, use the Windows tool above or save them as .docx in Word first. Comments are not included.',
+      up: 'Move up', down: 'Move down', del: 'Remove',
+      pLetter: 'Letter (8.5 × 11 in)', pLegal: 'Legal (8.5 × 14 in)', pA4: 'A4 (210 × 297 mm)', pKeep: 'Keep original sizes',
+      pFile: (n, name) => 'Same as file ' + n + ': ' + name,
+      onlyDocx: names => 'Only .docx files are supported: ' + names,
+      working: 'Merging...',
+      done: name => 'Done! Downloaded ' + name,
+      fail: m => 'Failed: the file may be damaged or in an unsupported format. (' + m + ')',
+      noZip: 'Could not load JSZip'
+    },
+    ko: {
+      title: 'Word 파일 합치기',
+      sub: '각 파일의 여백, 용지 방향, 머리글/바닥글은 그대로 유지됩니다. .doc에서 변환한 파일(호환 모드)이 섞이면 결과도 호환 모드로 저장됩니다. 파일은 서버로 전송되지 않고 이 브라우저 안에서만 처리됩니다.',
+      drop: '.docx 파일을 여기에 끌어다 놓거나 <b>클릭해서 선택</b>하세요 (2개 이상)',
+      paper: '용지 크기',
+      outname: '저장할 파일 이름',
+      go: '합치기 &amp; 다운로드',
+      dlText: '<b>.doc 파일도 합쳐야 하나요?</b><br>Windows용 프로그램을 받으세요. .doc/.docx 모두 되고, .doc으로 저장도 됩니다. (PC에 Word 필요)',
+      dlBtn: 'word-merge.bat 다운로드',
+      note: '목록을 드래그하거나 ↑↓ 버튼으로 순서를 바꿀 수 있습니다. 맨 위 파일이 첫 페이지가 되고, 각 파일은 새 페이지에서 시작합니다. 용지 크기를 고르거나 기준 파일을 고르면 모든 페이지가 그 크기로 통일됩니다(가로 페이지는 가로 유지, 여백은 그대로).<br>.doc 파일은 위 Windows 프로그램을 쓰거나, Word에서 .docx로 저장한 뒤 사용하세요. 메모(comments)는 포함되지 않습니다.',
+      up: '위로', down: '아래로', del: '삭제',
+      pLetter: 'Letter (8.5 × 11 in)', pLegal: 'Legal (8.5 × 14 in)', pA4: 'A4 (210 × 297 mm)', pKeep: '원본 그대로 (파일마다 다름)',
+      pFile: (n, name) => n + '번 파일과 같게: ' + name,
+      onlyDocx: names => '.docx 파일만 가능합니다: ' + names,
+      working: '합치는 중...',
+      done: name => '완료! ' + name + ' 다운로드됨',
+      fail: m => '실패: 파일이 손상됐거나 지원하지 않는 형식일 수 있습니다. (' + m + ')',
+      noZip: 'JSZip을 불러오지 못했습니다'
+    }
+  };
+  let lang = 'en';
+  try { lang = localStorage.getItem('docxMergeLang') || ''; } catch (e) { lang = ''; }
+  if (!T[lang]) lang = /^ko/i.test(navigator.language || '') ? 'ko' : 'en';
+  const t = (k, ...a) => { const v = T[lang][k]; return typeof v === 'function' ? v(...a) : v; };
+  let lastMsg = null; // [key, args, isError] so the message can be re-rendered on language change
+  function setMsg(key, args, isErr) {
+    lastMsg = key ? [key, args || [], !!isErr] : null;
+    msg.className = 'msg' + (isErr ? ' err' : '');
+    msg.textContent = key ? t(key, ...(args || [])) : '';
+  }
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.title = t('title');
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => el.setAttribute('aria-label', t(el.dataset.i18nAria)));
+    document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.lang === lang));
+    if (lastMsg) setMsg(lastMsg[0], lastMsg[1], lastMsg[2]);
+    render();
+  }
+  document.querySelectorAll('.lang button').forEach(b => b.onclick = () => {
+    lang = b.dataset.lang;
+    try { localStorage.setItem('docxMergeLang', lang); } catch (e) {}
+    applyLang();
+  });
   let merger = null;
   let files = [];
   const $ = id => document.getElementById(id);
@@ -722,9 +786,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const li = document.createElement('li');
       li.draggable = true;
       li.innerHTML = '<span class="grip">⋮⋮</span><span class="n">' + (i + 1) + '</span><span class="name"></span>' +
-        '<button title="위로">&uarr;</button><button title="아래로">&darr;</button><button title="삭제">&times;</button>';
+        '<button>&uarr;</button><button>&darr;</button><button>&times;</button>';
       li.querySelector('.name').textContent = f.name;
       const [up, down, del] = li.querySelectorAll('button');
+      up.title = t('up'); down.title = t('down'); del.title = t('del');
       up.disabled = i === 0; down.disabled = i === files.length - 1;
       up.onclick = () => move(i, i - 1);
       down.onclick = () => move(i, i + 1);
@@ -764,8 +829,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
   function renderPaper() {
     if (paperChoice && typeof paperChoice === 'object' && !files.includes(paperChoice)) paperChoice = 'letter';
-    const opts = [['letter', 'Letter (8.5 × 11 in)'], ['legal', 'Legal (8.5 × 14 in)'], ['a4', 'A4 (210 × 297 mm)'], ['', '원본 그대로 (파일마다 다름)']];
-    files.forEach((f, i) => opts.push(['file:' + i, (i + 1) + '번 파일과 같게: ' + f.name]));
+    const opts = [['letter', t('pLetter')], ['legal', t('pLegal')], ['a4', t('pA4')], ['', t('pKeep')]];
+    files.forEach((f, i) => opts.push(['file:' + i, t('pFile', i + 1, f.name)]));
     paperSel.innerHTML = '';
     for (const [v, t] of opts) {
       const o = document.createElement('option');
@@ -786,12 +851,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     for (const f of fl) {
       if (/\.docx$/i.test(f.name)) files.push(f); else bad.push(f.name);
     }
-    msg.className = 'msg' + (bad.length ? ' err' : '');
-    msg.textContent = bad.length ? '.docx 파일만 가능합니다: ' + bad.join(', ') : '';
+    if (bad.length) setMsg('onlyDocx', [bad.join(', ')], true); else setMsg(null);
     render();
   }
 
-  renderPaper();
+  applyLang();
   $('pick').onchange = e => { add(e.target.files); e.target.value = ''; };
   ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
@@ -800,9 +864,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.addEventListener('drop', e => { e.preventDefault(); if (dragIdx === null && e.dataTransfer.files.length) add(e.dataTransfer.files); });
 
   go.onclick = async () => {
-    go.disabled = true; msg.className = 'msg'; msg.textContent = '합치는 중...';
+    go.disabled = true; setMsg('working');
     try {
-      if (typeof JSZip === 'undefined') throw new Error('JSZip을 불러오지 못했습니다');
+      if (typeof JSZip === 'undefined') throw new Error(t('noZip'));
       merger = merger || makeMerger(JSZip, DOMParser, XMLSerializer);
       const bufs = await Promise.all(files.map(f => f.arrayBuffer()));
       const paper = typeof paperChoice === 'object' ? { file: files.indexOf(paperChoice) } : paperChoice;
@@ -813,11 +877,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       a.href = URL.createObjectURL(blob); a.download = name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      msg.textContent = '완료! ' + name + ' 다운로드됨';
+      setMsg('done', [name]);
     } catch (e) {
       console.error(e);
-      msg.className = 'msg err';
-      msg.textContent = '실패: 파일이 손상됐거나 지원하지 않는 형식일 수 있습니다. (' + e.message + ')';
+      setMsg('fail', [e.message], true);
     }
     go.disabled = files.length < 2;
   };
