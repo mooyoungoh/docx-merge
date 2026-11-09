@@ -490,6 +490,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             const b = a && kids(a, W, inner)[0];
             return b ? Array.from(b.childNodes).filter(n => n.nodeType === 1) : [];
           };
+          const P_ORDER = ['pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl', 'numPr', 'suppressLineNumbers', 'pBdr', 'shd', 'tabs', 'suppressAutoHyphens', 'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct', 'autoSpaceDE', 'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind', 'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc', 'textDirection', 'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle', 'rPr', 'sectPr', 'pPrChange'];
+          const R_ORDER = ['rStyle', 'rFonts', 'b', 'bCs', 'i', 'iCs', 'caps', 'smallCaps', 'strike', 'dstrike', 'outline', 'shadow', 'emboss', 'imprint', 'noProof', 'snapToGrid', 'vanish', 'webHidden', 'color', 'spacing', 'w', 'kern', 'position', 'sz', 'szCs', 'highlight', 'u', 'effect', 'bdr', 'shd', 'fitText', 'vertAlign', 'rtl', 'cs', 'em', 'lang', 'eastAsianLayout', 'specVanish', 'oMath'];
           const STYLE_ORDER = ['name', 'aliases', 'basedOn', 'next', 'link', 'autoRedefine', 'hidden', 'uiPriority', 'semiHidden', 'unhideWhenUsed', 'qFormat', 'locked', 'personal', 'personalCompose', 'personalReply', 'rsid', 'pPr', 'rPr', 'tblPr', 'trPr', 'tcPr', 'tblStylePr'];
           const ensureChild = (st, name) => {
             let el = kids(st, W, name)[0];
@@ -528,7 +530,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
                       for (const a of Array.from(pnode.attributes)) if (!have.hasAttributeNS(a.namespaceURI, a.localName)) have.setAttributeNS(a.namespaceURI, a.name, a.value);
                       continue;
                     }
-                    holder.insertBefore(outSty.importNode(pnode, true), holder.firstChild);
+                    const order = target === 'pPr' ? P_ORDER : R_ORDER;
+                    const pos = order.indexOf(pnode.localName);
+                    const before = Array.from(holder.childNodes).find(c => c.nodeType === 1 && order.indexOf(c.localName) > pos) || null;
+                    holder.insertBefore(outSty.importNode(pnode, true), before);
                   }
                 }
               }
