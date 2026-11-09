@@ -257,6 +257,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       let nextId = 1;
       const newRelId = () => { while (usedIds.has('rId' + nextId)) nextId++; usedIds.add('rId' + nextId); return 'rId' + nextId; };
       const ridMap = {};
+      const styledParts = []; // copied parts whose style references must be remapped
       for (const rel of Array.from(srcRels.getElementsByTagNameNS(PR, 'Relationship'))) {
         const type = rel.getAttribute('Type');
         if (SKIP_TYPES.includes(relType(type))) continue;
@@ -271,6 +272,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           const np = await copyPart(resolve(srcMain, rel.getAttribute('Target')));
           if (!np) continue;
           nr.setAttribute('Target', relative(outMain, np));
+          if (['header', 'footer'].includes(relType(type))) styledParts.push(np);
         }
         outRelRoot.appendChild(nr);
         ridMap[rel.getAttribute('Id')] = id;
@@ -390,25 +392,145 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       } else appendDoc._numMap = null;
 
-      // ---- styles: add styles the base doc does not have
+      // ---- styles ("keep source formatting")
+      // A source style whose id also exists in the base doc but is defined
+      // differently (or inherits from such a style, or the documents' defaults
+      // differ) is copied under a new id, and the source content is pointed at it.
+      let styleMap = {}, srcDefault = {};
       const srcStyRel = findRel(srcRels, 'styles'), outStyRel = findRel(outRels, 'styles');
       if (srcStyRel && outStyRel) {
         const outStyPath = resolve(outMain, outStyRel.getAttribute('Target'));
         const outSty = await readXml(out, outStyPath);
         const srcSty = await readXml(src, resolve(srcMain, srcStyRel.getAttribute('Target')));
         if (srcSty && outSty) {
-          const have = new Set(all(outSty, W, 'style').map(s => s.getAttributeNS(W, 'styleId')));
-          for (const s of kids(srcSty.documentElement, W, 'style')) {
-            if (have.has(s.getAttributeNS(W, 'styleId'))) continue;
-            const c = outSty.importNode(s, true);
-            if (appendDoc._numMap) for (const e of Array.from(c.getElementsByTagNameNS(W, 'numId'))) {
-              const v = e.getAttributeNS(W, 'val');
-              if (appendDoc._numMap[v] !== undefined) e.setAttributeNS(W, 'w:val', String(appendDoc._numMap[v]));
+          const sid = e => e.getAttributeNS(W, 'styleId');
+          const outById = {}, srcById = {};
+          for (const e of kids(outSty.documentElement, W, 'style')) outById[sid(e)] = e;
+          for (const e of kids(srcSty.documentElement, W, 'style')) srcById[sid(e)] = e;
+          const canon = el => {
+            if (!el) return '';
+            const c = el.cloneNode(true);
+            for (const x of Array.from(c.getElementsByTagName('*')).concat([c])) {
+              for (const a of Array.from(x.attributes || [])) if (/^rsid/.test(a.localName)) x.removeAttributeNode(a);
+            }
+            for (const n of ['rsid', 'uiPriority', 'semiHidden', 'unhideWhenUsed', 'qFormat', 'locked', 'personal', 'personalCompose', 'personalReply', 'autoRedefine', 'hidden'])
+              for (const x of Array.from(c.getElementsByTagNameNS(W, n))) if (x.parentNode === c) c.removeChild(x);
+            return ser(c).replace(/^<\?xml[^>]*>\s*/, '').replace(/\s+xmlns(:\w+)?="[^"]*"/g, '');
+          };
+          const defaultsDiffer = canon(kids(outSty.documentElement, W, 'docDefaults')[0]) !== canon(kids(srcSty.documentElement, W, 'docDefaults')[0]);
+          const memo = {};
+          const needsRename = id => {
+            if (id in memo) return memo[id];
+            memo[id] = false;
+            const se = srcById[id];
+            if (!se) return false;
+            let r = false;
+            if (outById[id]) r = defaultsDiffer || canon(se) !== canon(outById[id]);
+            const based = kids(se, W, 'basedOn')[0];
+            if (!r && outById[id] && based && needsRename(based.getAttributeNS(W, 'val'))) r = true;
+            return (memo[id] = r);
+          };
+          const usedIds = new Set(Object.keys(outById));
+          const usedNames = new Set(all(outSty, W, 'name').map(n => n.getAttributeNS(W, 'val').toLowerCase()));
+          for (const id of Object.keys(srcById)) if (needsRename(id)) {
+            let nid = id + '_' + (idx + 1), k = 2;
+            while (usedIds.has(nid) || srcById[nid]) nid = id + '_' + (idx + 1) + '_' + (k++);
+            usedIds.add(nid);
+            styleMap[id] = nid;
+          }
+          for (const e of Object.values(srcById)) {
+            if (e.getAttributeNS(W, 'default') === '1') srcDefault[e.getAttributeNS(W, 'type')] = sid(e);
+          }
+          const srcDD = kids(srcSty.documentElement, W, 'docDefaults')[0];
+          const ddProps = (tag, inner) => {
+            const a = srcDD && srcDD.getElementsByTagNameNS(W, tag)[0];
+            const b = a && kids(a, W, inner)[0];
+            return b ? Array.from(b.childNodes).filter(n => n.nodeType === 1) : [];
+          };
+          const STYLE_ORDER = ['name', 'aliases', 'basedOn', 'next', 'link', 'autoRedefine', 'hidden', 'uiPriority', 'semiHidden', 'unhideWhenUsed', 'qFormat', 'locked', 'personal', 'personalCompose', 'personalReply', 'rsid', 'pPr', 'rPr', 'tblPr', 'trPr', 'tcPr', 'tblStylePr'];
+          const ensureChild = (st, name) => {
+            let el = kids(st, W, name)[0];
+            if (el) return el;
+            el = outSty.createElementNS(W, 'w:' + name);
+            const pos = STYLE_ORDER.indexOf(name);
+            const before = Array.from(st.childNodes).find(c => c.nodeType === 1 && STYLE_ORDER.indexOf(c.localName) > pos) || null;
+            st.insertBefore(el, before);
+            return el;
+          };
+          for (const e of kids(srcSty.documentElement, W, 'style')) {
+            const id = sid(e);
+            const renamed = styleMap[id];
+            if (!renamed && outById[id]) continue; // identical style already present
+            const c = outSty.importNode(e, true);
+            if (renamed) {
+              c.setAttributeNS(W, 'w:styleId', renamed);
+              c.removeAttributeNS(W, 'default');
+              c.setAttributeNS(W, 'w:customStyle', '1');
+              const nm = kids(c, W, 'name')[0];
+              let base = (nm ? nm.getAttributeNS(W, 'val') : id) + ' (' + (idx + 1) + ')', name = base, k = 2;
+              while (usedNames.has(name.toLowerCase())) name = base + ' ' + (k++);
+              usedNames.add(name.toLowerCase());
+              ensureChild(c, 'name').setAttributeNS(W, 'w:val', name);
+              for (const a of kids(c, W, 'aliases')) c.removeChild(a);
+              // root of a chain: carry the source document's defaults with it
+              if (defaultsDiffer && !kids(c, W, 'basedOn').length) {
+                for (const [tag, inner, target] of [['rPrDefault', 'rPr', 'rPr'], ['pPrDefault', 'pPr', 'pPr']]) {
+                  if (target === 'pPr' && c.getAttributeNS(W, 'type') !== 'paragraph') continue;
+                  const props = ddProps(tag, inner);
+                  if (!props.length) continue;
+                  const holder = ensureChild(c, target);
+                  for (const pnode of props) {
+                    const have = kids(holder, W, pnode.localName)[0];
+                    if (have) {
+                      for (const a of Array.from(pnode.attributes)) if (!have.hasAttributeNS(a.namespaceURI, a.localName)) have.setAttributeNS(a.namespaceURI, a.name, a.value);
+                      continue;
+                    }
+                    holder.insertBefore(outSty.importNode(pnode, true), holder.firstChild);
+                  }
+                }
+              }
+            }
+            for (const n of ['basedOn', 'next', 'link']) for (const r of kids(c, W, n)) {
+              const v = r.getAttributeNS(W, 'val');
+              if (styleMap[v]) r.setAttributeNS(W, 'w:val', styleMap[v]);
+            }
+            if (appendDoc._numMap) for (const x of Array.from(c.getElementsByTagNameNS(W, 'numId'))) {
+              const v = x.getAttributeNS(W, 'val');
+              if (appendDoc._numMap[v] !== undefined) x.setAttributeNS(W, 'w:val', String(appendDoc._numMap[v]));
             }
             outSty.documentElement.appendChild(c);
           }
           out.file(outStyPath, ser(outSty));
         }
+      }
+      // Point source content at the (possibly renamed) source styles. Paragraphs
+      // and tables without an explicit style use the document default, which in
+      // the merged file would be the base doc's default, so make it explicit.
+      const remapStyles = root => {
+        const doc = root.ownerDocument || root;
+        for (const tag of ['pStyle', 'rStyle', 'tblStyle']) for (const e of Array.from(root.getElementsByTagNameNS(W, tag))) {
+          const v = e.getAttributeNS(W, 'val');
+          if (styleMap[v]) e.setAttributeNS(W, 'w:val', styleMap[v]);
+        }
+        const defP = styleMap[srcDefault.paragraph], defT = styleMap[srcDefault.table];
+        if (defP) for (const p of Array.from(root.getElementsByTagNameNS(W, 'p'))) {
+          let pPr = kids(p, W, 'pPr')[0];
+          if (pPr && kids(pPr, W, 'pStyle').length) continue;
+          if (!pPr) { pPr = doc.createElementNS(W, 'w:pPr'); p.insertBefore(pPr, p.firstChild); }
+          const ps = doc.createElementNS(W, 'w:pStyle'); ps.setAttributeNS(W, 'w:val', defP);
+          pPr.insertBefore(ps, pPr.firstChild);
+        }
+        if (defT) for (const t of Array.from(root.getElementsByTagNameNS(W, 'tbl'))) {
+          let tblPr = kids(t, W, 'tblPr')[0];
+          if (!tblPr || kids(tblPr, W, 'tblStyle').length) continue;
+          const ts = doc.createElementNS(W, 'w:tblStyle'); ts.setAttributeNS(W, 'w:val', defT);
+          tblPr.insertBefore(ts, tblPr.firstChild);
+        }
+      };
+      remapStyles(srcBody);
+      for (const part of styledParts) {
+        const d = await readXml(out, part);
+        if (d) { remapStyles(d.documentElement); out.file(part, ser(d)); }
       }
 
       // ---- footnotes / endnotes
@@ -421,8 +543,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         const sPath = resolve(srcMain, sRel.getAttribute('Target'));
         const sDoc = await readXml(src, sPath);
         const oRel = findRel(outRels, kind);
+        remapStyles(sDoc.documentElement);
         if (!oRel) {
           const np = await copyPart(sPath);
+          out.file(np, ser(sDoc));
           addRel(kind, relative(outMain, np));
           continue;
         }
